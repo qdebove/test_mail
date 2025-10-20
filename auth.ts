@@ -9,11 +9,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export const  { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" }, // peut être "jwt", mais "database" convient très bien ici
+  
   providers: [
     ResendProvider({
       id: 'email',
       from: process.env.EMAIL_FROM,
-      async sendVerificationRequest({ identifier, url }) {
+      async sendVerificationRequest({ identifier, url, expires }) {
         // Envoi via Resend (POC : domaine par défaut)
         const { error } = await resend.emails.send({
           from: process.env.EMAIL_FROM!,
@@ -30,7 +31,7 @@ export const  { auth, handlers, signIn, signOut } = NextAuth({
               </p>
               <p style="color:#6b7280">Si le bouton ne fonctionne pas, copiez-collez ce lien :</p>
               <p><a href="${url}">${url}</a></p>
-              <p style="font-size:12px;color:#6b7280">Le lien expire automatiquement.</p>
+              <p style="font-size:12px;color:#6b7280">Le lien expire le ${expires.toLocaleDateString()}</p>
             </div>
           `,
           text: `Connectez-vous avec ce lien : ${url}`,

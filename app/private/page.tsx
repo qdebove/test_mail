@@ -1,46 +1,132 @@
+import PrivateDashboard from "@/components/private/PrivateDashboard";
 import { auth } from "@/auth";
 import SignOutButton from "@/components/SignOutButton";
+import { prisma } from "@/prisma";
+import { GAME_CATEGORIES } from "@/lib/gameCategories";
 
 export default async function PrivatePage() {
   const session = await auth();
 
   if (!session) {
-    // Sûreté côté serveur (redirigé aussi par le middleware)
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Accès refusé</h1>
-          <p className="mt-2 text-gray-600">Veuillez vous connecter.</p>
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-semibold text-gray-900">Access denied</h1>
+          <p className="mt-3 text-gray-600">
+            You must be signed in to view this page.
+          </p>
           <a
-            className="mt-4 inline-flex rounded-lg bg-black px-4 py-2 font-medium text-white hover:bg-black/90"
+            className="mt-6 inline-flex items-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-black/90"
             href="/login"
           >
-            Aller à la connexion
+            Go to login
           </a>
         </div>
       </main>
     );
   }
 
-  return (
-    <main className="mx-auto max-w-2xl px-4 py-16">
-      <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Zone Privée 🔒</h1>
-          <SignOutButton />
-        </div>
+  const sessionUser = session.user as {
+    id?: string | null;
+    email?: string | null;
+    name?: string | null;
+  };
 
-        <div className="space-y-2 text-gray-700">
-          <p>Bienvenue, <span className="font-semibold">{session.user?.email}</span></p>
-          <p>Vous êtes connecté grâce à un lien magique ✨</p>
-        </div>
+  let userRecord =
+    sessionUser?.id
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            address: true,
+            addressComplement: true,
+            zipCode: true,
+            admin: true,
+          },
+        })
+      : null;
 
-        <div className="mt-6 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
-          <p>
-            Cette zone n’est **pas** accessible autrement que par authentification.
+  if (!userRecord && sessionUser?.email) {
+    userRecord = await prisma.user.findUnique({
+      where: { email: sessionUser.email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+        address: true,
+        addressComplement: true,
+        zipCode: true,
+        admin: true,
+      },
+    });
+  }
+
+  if (!userRecord) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-xl font-semibold text-gray-900">Account not found</h1>
+          <p className="mt-3 text-gray-600">
+            We were not able to locate your user record. Please sign out and try again.
           </p>
+          <div className="mt-6">
+            <SignOutButton />
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    );
+  }
+
+  const games = await prisma.game.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    include: {
+      boardGame: {
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          thumbnailUrl: true,
+          bggId: true,
+        },
+      },
+    },
+  });
+
+  const initialGames = games.map((game) => ({
+    id: game.id,
+    name: game.name,
+    category: game.category,
+    minPlayers: game.minPlayers,
+    maxPlayers: game.maxPlayers,
+    durationMin: game.durationMin,
+    thumbnailUrl: game.thumbnailUrl,
+    bggId: game.bggId,
+    createdAt: game.createdAt.toISOString(),
+    addressSnapshot: game.addressSnapshot,
+    visibility: game.visibility,
+    contributionType: game.contributionType,
+    contributionNote: game.contributionNote,
+    boardGame: game.boardGame
+      ? {
+          id: game.boardGame.id,
+          name: game.boardGame.name,
+          category: game.boardGame.category,
+          thumbnailUrl: game.boardGame.thumbnailUrl,
+          bggId: game.boardGame.bggId,
+        }
+      : null,
+  }));
+
+  return (
+    <PrivateDashboard
+      user={userRecord}
+      initialGames={initialGames}
+      categories={GAME_CATEGORIES}
+    />
   );
 }

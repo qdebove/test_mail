@@ -13,7 +13,7 @@ export default function LoginPage() {
     e.preventDefault();
     setStatus("loading");
     setMessage("");
-    const res = await signIn("email", { email, redirect: false });
+    const res = await signIn("email", { email, redirect: false, redirectTo: '/private' });
     if (!res?.error) {
       setStatus("sent");
       setMessage("Email envoyé ! Vérifie ta boîte mail ✉️");

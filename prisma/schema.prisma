@@ -8,13 +8,23 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
+  id              String      @id @default(cuid())
+  name            String?
+  email           String?     @unique
+  emailVerified   DateTime?
+  image           String?
+  address         String?
+  addressComplement String?   @map("address_complement")
+  zipCode         String?     @map("zip_code")
+  admin           Boolean     @default(false)
+  accounts        Account[]
+  sessions        Session[]
+  hostedSessions  GameSession[]   // GameSession.host -> User.id
+  favoriteGames   FavoriteGame[]  // FavoriteGame.user -> User.id
+  rsvps           Rsvp[]          // Rsvp.user -> User.id
+  messages        Message[]       // Message.author -> User.id
+  postedGames     Game[]          @relation("GameOwner")
+  curatedBoardGames BoardGame[]   @relation("BoardGameCurator")
 }
 
 model Account {
@@ -51,4 +61,208 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// =======================
+// Enums (depuis Drizzle)
+// =======================
+enum visibility {
+  PUBLIC
+  FRIENDS
+  LINK
+}
+
+enum session_status {
+  OPEN
+  FULL
+  CANCELLED
+  DONE
+}
+
+enum contribution_type {
+  NONE
+  MONEY
+  ITEMS
+}
+
+enum game_category {
+  ABSTRACT
+  ADVENTURE
+  AREA_CONTROL
+  CARD_GAME
+  COOPERATIVE
+  DEDUCTION
+  DICE
+  ENGINE_BUILDING
+  FAMILY
+  PARTY
+  PUSH_YOUR_LUCK
+  ROLL_AND_WRITE
+  SET_COLLECTION
+  SOCIAL_DEDUCTION
+  STRATEGY
+  THEMATIC
+  TILE_PLACEMENT
+  WAR
+  WORKER_PLACEMENT
+}
+
+enum rsvp_status {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WAITLIST
+}
+
+model BoardGame {
+  id            String        @id @default(uuid())
+  name          String
+  category      game_category
+  description   String?
+  publisher     String?
+  yearPublished Int?
+  minPlayers    Int
+  maxPlayers    Int
+  playTimeMin   Int
+  complexity    Float?
+  thumbnailUrl  String?       @map("thumbnail_url")
+  bggId         Int?          @unique @map("bgg_id")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  curatorId     String?       @map("curator_id")
+
+  curator       User?         @relation("BoardGameCurator", fields: [curatorId], references: [id], onDelete: SetNull)
+  games         Game[]
+
+  @@unique([name], map: "board_games_name_key")
+  @@map("board_games")
+}
+
+// =======================
+// games
+// =======================
+model Game {
+  id                String           @id @default(uuid())
+  name              String
+  category          game_category
+  minPlayers        Int              @map("min_players")
+  maxPlayers        Int              @map("max_players")
+  durationMin       Int              @map("duration_min")
+  thumbnailUrl      String?          @map("thumbnail_url")
+  bggId             Int?             @map("bgg_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  ownerId           String?          @map("owner_id")
+  owner             User?            @relation("GameOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  addressSnapshot   String?          @map("address_snapshot")
+  visibility        visibility       @default(PUBLIC)
+  contributionType  contribution_type @default(NONE) @map("contribution_type")
+  contributionNote  String?          @map("contribution_note")
+  boardGameId       String?          @map("board_game_id")
+  boardGame         BoardGame?       @relation(fields: [boardGameId], references: [id], onDelete: SetNull)
+
+  // Relations
+  sessions    GameSessionGame[]
+  favoritedBy FavoriteGame[]
+
+  @@unique([name], map: "games_name_key")
+  @@map("games")
+}
+
+// =======================
+// game_sessions
+// =======================
+model GameSession {
+  id               String            @id @default(uuid())
+  hostId           String            @map("host_id")
+  title            String
+  description      String?
+  addressApprox    String            @map("address_approx")
+  latitude         Float?            @db.DoublePrecision
+  longitude        Float?            @db.DoublePrecision
+  geohash          String
+  startsAt         DateTime          @map("starts_at")
+  endsAt           DateTime          @map("ends_at")
+  capacity         Int
+  visibility       visibility        @default(PUBLIC)
+  contributionType contribution_type @default(NONE) @map("contribution_type")
+  contributionNote String?           @map("contribution_note")
+  priceCents       Int?              @map("price_cents")
+  status           session_status    @default(OPEN)
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  // Relations (vers TON modèle User existant)
+  host      User            @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  games     GameSessionGame[]
+  rsvps     Rsvp[]
+  messages  Message[]
+
+  @@index([geohash], map: "game_sessions_geohash_idx")
+  @@index([startsAt], map: "game_sessions_starts_at_idx")
+  @@map("game_sessions")
+}
+
+// =======================
+// game_session_games (pivot)
+// PK composite (session_id, game_id)
+// =======================
+model GameSessionGame {
+  sessionId String @map("session_id")
+  gameId    String @map("game_id")
+
+  session GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  game    Game        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, gameId])
+  @@map("game_session_games")
+}
+
+// =======================
+// favorite_games (pivot)
+// PK composite (user_id, game_id)
+// =======================
+model FavoriteGame {
+  userId    String   @map("user_id")
+  gameId    String   @map("game_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gameId])
+  @@map("favorite_games")
+}
+
+// =======================
+// rsvps
+// =======================
+model Rsvp {
+  id        String      @id @default(uuid())
+  sessionId String      @map("session_id")
+  userId    String      @map("user_id")
+  status    rsvp_status @default(PENDING)
+  note      String?
+  willBring String?     @map("will_bring")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  session GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId], map: "rsvps_session_user_key")
+  @@map("rsvps")
+}
+
+// =======================
+// messages
+// =======================
+model Message {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  author  User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
 }
