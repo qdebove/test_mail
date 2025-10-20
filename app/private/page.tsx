@@ -44,6 +44,8 @@ export default async function PrivatePage() {
             address: true,
             addressComplement: true,
             zipCode: true,
+            latitude: true,
+            longitude: true,
             admin: true,
           },
         })
@@ -60,6 +62,8 @@ export default async function PrivatePage() {
         address: true,
         addressComplement: true,
         zipCode: true,
+        latitude: true,
+        longitude: true,
         admin: true,
       },
     });

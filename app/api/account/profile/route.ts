@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/prisma";
+import { geocodeAddress } from "@/lib/location";
 import { NextRequest, NextResponse } from "next/server";
 
 function sanitizeText(value: unknown) {
@@ -95,14 +96,62 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        address: true,
+        addressComplement: true,
+        zipCode: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    let latitude: number | null = existing?.latitude ?? null;
+    let longitude: number | null = existing?.longitude ?? null;
+
+    const sanitizedAddress = address || null;
+    const sanitizedComplement = addressComplement || null;
+    const sanitizedZip = zipCode || null;
+
+    const locationChanged =
+      (sanitizedAddress ?? null) !== (existing?.address ?? null) ||
+      (sanitizedComplement ?? null) !== (existing?.addressComplement ?? null) ||
+      (sanitizedZip ?? null) !== (existing?.zipCode ?? null);
+
+    if (locationChanged) {
+      if (sanitizedAddress) {
+        const geocoded = await geocodeAddress({
+          address: sanitizedAddress,
+          addressComplement: sanitizedComplement,
+          zipCode: sanitizedZip,
+        });
+
+        if (!geocoded) {
+          return NextResponse.json(
+            { error: "Unable to calculate coordinates for this address" },
+            { status: 400 },
+          );
+        }
+
+        latitude = geocoded.latitude;
+        longitude = geocoded.longitude;
+      } else {
+        latitude = null;
+        longitude = null;
+      }
+    }
+
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
         name: name || null,
         image: imageInput || null,
-        address: address || null,
-        addressComplement: addressComplement || null,
-        zipCode: zipCode || null,
+        address: sanitizedAddress,
+        addressComplement: sanitizedComplement,
+        zipCode: sanitizedZip,
+        latitude,
+        longitude,
       },
       select: {
         id: true,
@@ -112,6 +161,8 @@ export async function PATCH(request: NextRequest) {
         address: true,
         addressComplement: true,
         zipCode: true,
+        latitude: true,
+        longitude: true,
         admin: true,
       },
     });

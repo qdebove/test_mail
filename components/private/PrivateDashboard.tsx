@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import SignOutButton from "@/components/SignOutButton";
 import Spinner from "@/components/ui/Spinner";
 import { GAME_CATEGORIES, type GameCategory, formatCategoryLabel } from "@/lib/gameCategories";
@@ -18,6 +18,8 @@ type UserProfile = {
   address: string | null;
   addressComplement: string | null;
   zipCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   admin: boolean;
 };
 
@@ -89,6 +91,14 @@ function buildAddressSummary(
     .join(", ") || null;
 }
 
+function formatCoordinate(value: number | null | undefined) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "";
+  }
+
+  return value.toFixed(6);
+}
+
 type AccountSettingsFormProps = {
   user: UserProfile;
   onUpdated: (user: UserProfile) => void;
@@ -101,6 +111,7 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
   const [streetAddress, setStreetAddress] = useState(user.address ?? "");
   const [addressComplement, setAddressComplement] = useState(user.addressComplement ?? "");
   const [zipCode, setZipCode] = useState(user.zipCode ?? "");
+  const [isAddressLocked, setIsAddressLocked] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -109,7 +120,22 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
     setStreetAddress(user.address ?? "");
     setAddressComplement(user.addressComplement ?? "");
     setZipCode(user.zipCode ?? "");
+    setIsAddressLocked(true);
   }, [user]);
+
+  function handleToggleAddressLock() {
+    if (isAddressLocked) {
+      const confirmed = window.confirm(
+        "Updating your address will recalculate your GPS coordinates. Continue?",
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsAddressLocked((previous) => !previous);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -139,6 +165,7 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
       }
 
       onUpdated(payload.user as UserProfile);
+      setIsAddressLocked(true);
       onFeedback({
         type: "success",
         message: payload?.message ?? "Profile updated successfully.",
@@ -186,20 +213,53 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
           />
         </label>
 
-        <label className="block text-sm font-medium text-gray-700">
-          Street address
+        <div>
+          <div className="flex items-center justify-between">
+            <label htmlFor="profile-address" className="text-sm font-medium text-gray-700">
+              Street address
+            </label>
+            <button
+              type="button"
+              onClick={handleToggleAddressLock}
+              className="flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+            >
+              <svg
+                aria-hidden
+                className="h-4 w-4 text-gray-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                {isAddressLocked ? (
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4m-9 3h8a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z" />
+                ) : (
+                  <>
+                    <path d="M7 11V9a5 5 0 0 1 9-3" />
+                    <path d="M9 14h7a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2Z" />
+                  </>
+                )}
+              </svg>
+              <span>{isAddressLocked ? "Locked" : "Unlocked"}</span>
+              <span className="sr-only">
+                {isAddressLocked ? "Unlock address fields" : "Lock address fields"}
+              </span>
+            </button>
+          </div>
           <textarea
+            id="profile-address"
             name="address"
             value={streetAddress}
             onChange={(event) => setStreetAddress(event.target.value)}
             placeholder="123 Rue de la République"
             rows={2}
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+            disabled={isAddressLocked}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
           />
           <span className="mt-1 block text-xs text-gray-500">
             We store this as a snapshot when you create games or sessions.
           </span>
-        </label>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-gray-700">
@@ -209,7 +269,8 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
               value={addressComplement}
               onChange={(event) => setAddressComplement(event.target.value)}
               placeholder="Bâtiment B, étage 3"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+              disabled={isAddressLocked}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
             />
           </label>
 
@@ -220,13 +281,37 @@ function AccountSettingsForm({ user, onUpdated, onFeedback }: AccountSettingsFor
               value={zipCode}
               onChange={(event) => setZipCode(event.target.value.toUpperCase())}
               placeholder="75010"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+              disabled={isAddressLocked}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
             />
             <span className="mt-1 block text-xs text-gray-500">
               Required to match players with nearby sessions.
             </span>
           </label>
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Latitude
+            <input
+              value={formatCoordinate(user.latitude)}
+              readOnly
+              className="mt-1 w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-700"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-gray-700">
+            Longitude
+            <input
+              value={formatCoordinate(user.longitude)}
+              readOnly
+              className="mt-1 w-full rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-700"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-gray-500">
+          Coordinates refresh automatically when you save a new address.
+        </p>
 
         <label className="block text-sm font-medium text-gray-700">
           Email
@@ -472,6 +557,223 @@ function GameComposer({
           className="inline-flex w-full items-center justify-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-60"
         >
           {isSubmitting ? "Publishing..." : "Publish game"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+type SessionComposerProps = {
+  onCreated?: () => void;
+  onFeedback: (feedback: Feedback) => void;
+  user: UserProfile;
+};
+
+function SessionComposer({ onCreated, onFeedback, user }: SessionComposerProps) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [capacity, setCapacity] = useState("4");
+  const [useProfileAddress, setUseProfileAddress] = useState(true);
+  const [manualAddress, setManualAddress] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const profileAddressSummary = buildAddressSummary(
+    user.address,
+    user.addressComplement,
+    user.zipCode,
+  );
+  const hasProfileCoordinates =
+    Boolean(user.address && user.address.trim().length > 0) &&
+    typeof user.latitude === "number" &&
+    typeof user.longitude === "number";
+
+  const profileCoordinatesLabel = hasProfileCoordinates
+    ? `${formatCoordinate(user.latitude)}°, ${formatCoordinate(user.longitude)}°`
+    : "coordinates unavailable";
+
+  const addressIncomplete = useProfileAddress && !hasProfileCoordinates;
+  const manualAddressMissing = !useProfileAddress && manualAddress.trim().length === 0;
+
+  function handleToggleAddressSource(event: ChangeEvent<HTMLInputElement>) {
+    const checked = event.target.checked;
+    setUseProfileAddress(checked);
+    if (checked) {
+      setManualAddress("");
+    }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/game-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description,
+          startsAt,
+          endsAt,
+          capacity,
+          useProfileAddress,
+          manualAddress,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        onFeedback({
+          type: "error",
+          message: payload?.error ?? "Unable to create the session.",
+        });
+        return;
+      }
+
+      setTitle("");
+      setDescription("");
+      setStartsAt("");
+      setEndsAt("");
+      setCapacity("4");
+      setUseProfileAddress(true);
+      setManualAddress("");
+
+      onFeedback({
+        type: "success",
+        message: payload?.message ?? "Session created successfully.",
+      });
+      onCreated?.();
+    } catch (error) {
+      console.error("Session creation failed:", error);
+      onFeedback({
+        type: "error",
+        message: "Unexpected error while creating the session.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="text-xl font-semibold text-gray-900">Host a new session</h2>
+      <p className="mt-2 text-sm text-gray-600">
+        Reuse your profile address ({profileAddressSummary ?? "no address yet"}) or pick a custom
+        spot for special meetups.
+      </p>
+      {addressIncomplete && (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Add a full address to your profile so we can include coordinates on the map.
+        </p>
+      )}
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <label className="block text-sm font-medium text-gray-700">
+          Session title
+          <input
+            type="text"
+            name="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+            placeholder="Game night at my place"
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-gray-700">
+          Description
+          <textarea
+            name="description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={3}
+            placeholder="Optional details about the games you'll host."
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Starts
+            <input
+              type="datetime-local"
+              name="startsAt"
+              value={startsAt}
+              onChange={(event) => setStartsAt(event.target.value)}
+              required
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-gray-700">
+            Ends
+            <input
+              type="datetime-local"
+              name="endsAt"
+              value={endsAt}
+              onChange={(event) => setEndsAt(event.target.value)}
+              required
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm font-medium text-gray-700">
+          Capacity
+          <input
+            type="number"
+            name="capacity"
+            value={capacity}
+            onChange={(event) => setCapacity(event.target.value)}
+            min={2}
+            max={24}
+            required
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"
+          />
+        </label>
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={useProfileAddress}
+              onChange={handleToggleAddressSource}
+              className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+            />
+            <span>
+              Use my profile address ({profileAddressSummary ?? "no address saved"}) — {profileCoordinatesLabel}
+            </span>
+          </label>
+
+          {!useProfileAddress && (
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="session-manual-address">
+                Custom address
+              </label>
+              <textarea
+                id="session-manual-address"
+                name="manualAddress"
+                value={manualAddress}
+                onChange={(event) => setManualAddress(event.target.value)}
+                rows={2}
+                placeholder="Leaky Cauldron Bar, 15 Wizard Alley, 75000 Paris"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-black"
+              />
+            </div>
+          )}
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting || addressIncomplete || manualAddressMissing}
+          className="inline-flex w-full items-center justify-center rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-60"
+        >
+          {isSubmitting ? "Creating..." : "Create session"}
         </button>
       </form>
     </section>
@@ -773,13 +1075,23 @@ export default function PrivateDashboard({
       {feedbackContent}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <AccountSettingsForm
-          user={user}
-          onUpdated={(updated) => {
-            setUser(updated);
-          }}
-          onFeedback={handleFeedback}
-        />
+        <div className="space-y-8">
+          <AccountSettingsForm
+            user={user}
+            onUpdated={(updated) => {
+              setUser(updated);
+            }}
+            onFeedback={handleFeedback}
+          />
+
+          <SessionComposer
+            user={user}
+            onFeedback={handleFeedback}
+            onCreated={() => {
+              refreshGames({ query: searchQuery, category: categoryFilter });
+            }}
+          />
+        </div>
 
         <GameComposer
           userAddressSummary={buildAddressSummary(user.address, user.addressComplement, user.zipCode)}
