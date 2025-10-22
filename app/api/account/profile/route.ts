@@ -119,27 +119,28 @@ export async function PATCH(request: NextRequest) {
       (sanitizedComplement ?? null) !== (existing?.addressComplement ?? null) ||
       (sanitizedZip ?? null) !== (existing?.zipCode ?? null);
 
-    if (locationChanged) {
-      if (sanitizedAddress) {
-        const geocoded = await geocodeAddress({
-          address: sanitizedAddress,
-          addressComplement: sanitizedComplement,
-          zipCode: sanitizedZip,
-        });
+    const needsCoordinates =
+      locationChanged || latitude === null || longitude === null;
 
-        if (!geocoded) {
-          return NextResponse.json(
-            { error: "Unable to calculate coordinates for this address" },
-            { status: 400 },
-          );
-        }
+    if (sanitizedAddress && needsCoordinates) {
+      const geocoded = await geocodeAddress({
+        address: sanitizedAddress,
+        addressComplement: sanitizedComplement,
+        zipCode: sanitizedZip,
+      });
 
-        latitude = geocoded.latitude;
-        longitude = geocoded.longitude;
-      } else {
-        latitude = null;
-        longitude = null;
+      if (!geocoded) {
+        return NextResponse.json(
+          { error: "Unable to calculate coordinates for this address" },
+          { status: 400 },
+        );
       }
+
+      latitude = geocoded.latitude;
+      longitude = geocoded.longitude;
+    } else if (locationChanged) {
+      latitude = null;
+      longitude = null;
     }
 
     const updated = await prisma.user.update({
