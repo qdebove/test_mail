@@ -16,6 +16,8 @@ model User {
   address         String?
   addressComplement String?   @map("address_complement")
   zipCode         String?     @map("zip_code")
+  latitude        Float?      @db.DoublePrecision
+  longitude       Float?      @db.DoublePrecision
   admin           Boolean     @default(false)
   accounts        Account[]
   sessions        Session[]
