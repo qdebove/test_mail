@@ -1,12 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/prisma";
 import { getAdminUser } from "@/lib/adminAuth";
+import { prisma } from "@/prisma";
+import { NextRequest, NextResponse } from "next/server";
 
 function sanitizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const admin = await getAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -47,7 +50,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     );
   }
 
-  if (params.id === admin.id && makeAdmin === false) {
+  const { id } = await context.params;
+
+  if (id === admin.id && makeAdmin === false) {
     return NextResponse.json(
       { error: "You cannot revoke your own admin rights." },
       { status: 400 },
@@ -56,7 +61,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   try {
     const user = await prisma.user.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: name || null,
         address: address || null,
@@ -73,13 +78,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const admin = await getAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  if (params.id === admin.id) {
+  const { id } = await context.params;
+
+  if (id === admin.id) {
     return NextResponse.json(
       { error: "You cannot delete your own account while signed in." },
       { status: 400 },
@@ -87,10 +97,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
   }
 
   try {
-    await prisma.user.delete({
-      where: { id: params.id },
-    });
-
+    await prisma.user.delete({ where: { id } });
     return NextResponse.json({ message: "User deleted." });
   } catch (error) {
     console.error("User delete failed:", error);

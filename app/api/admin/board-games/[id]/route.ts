@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/prisma";
-import { GAME_CATEGORIES } from "@/lib/gameCategories";
 import { getAdminUser } from "@/lib/adminAuth";
+import { GAME_CATEGORIES } from "@/lib/gameCategories";
+import { prisma } from "@/prisma";
+import { NextRequest, NextResponse } from "next/server";
 
 const CATEGORY_VALUES = new Set<string>(GAME_CATEGORIES);
 
@@ -13,7 +13,10 @@ function ensureNumber(value: unknown, { min }: { min?: number } = {}) {
   return parsed;
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const admin = await getAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
@@ -27,12 +30,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 
   const name = typeof payload.name === "string" ? payload.name.trim() : "";
-  const categoryRaw = typeof payload.category === "string" ? payload.category.trim().toUpperCase() : "";
+  const categoryRaw =
+    typeof payload.category === "string"
+      ? payload.category.trim().toUpperCase()
+      : "";
 
   if (!name) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
-
   if (!CATEGORY_VALUES.has(categoryRaw)) {
     return NextResponse.json({ error: "Unknown category" }, { status: 400 });
   }
@@ -44,14 +49,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (minPlayers === null || maxPlayers === null || playTimeMin === null) {
     return NextResponse.json(
       { error: "Players and play time must be positive numbers" },
-      { status: 400 },
+      { status: 400 }
     );
   }
-
   if (maxPlayers < minPlayers) {
     return NextResponse.json(
       { error: "Maximum players must be greater than or equal to minimum players" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -67,13 +71,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (thumbnailUrl && !/^https?:\/\//i.test(thumbnailUrl)) {
     return NextResponse.json(
       { error: "Thumbnail URL must start with http or https" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
   try {
+    const { id } = await context.params; // await the params Promise
+
     const boardGame = await prisma.boardGame.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name,
         category: categoryRaw,
@@ -85,13 +91,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           typeof payload.publisher === "string" && payload.publisher.trim().length > 0
             ? payload.publisher.trim()
             : null,
-        yearPublished: yearPublished,
+        yearPublished,
         minPlayers,
         maxPlayers,
         playTimeMin,
-        complexity: complexity,
+        complexity,
         thumbnailUrl,
-        bggId: bggId,
+        bggId,
         curatorId: admin.id,
       },
     });
@@ -99,25 +105,35 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ boardGame, message: "Board game updated." });
   } catch (error) {
     console.error("Board game update failed:", error);
-    return NextResponse.json({ error: "Unable to update board game" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to update board game" },
+      { status: 500 }
+    );
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const admin = await getAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   try {
+    const { id } = await context.params;
+
     await prisma.boardGame.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json({ message: "Board game deleted." });
   } catch (error) {
     console.error("Board game delete failed:", error);
-    return NextResponse.json({ error: "Unable to delete board game" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to delete board game" },
+      { status: 500 }
+    );
   }
 }
-
